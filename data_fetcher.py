@@ -1,7 +1,6 @@
 import time
 import csv
 import os
-import glob
 from datetime import datetime, timedelta
 from iqoptionapi.stable_api import IQ_Option
 import MetaTrader5 as mt5
@@ -51,10 +50,10 @@ print("Available binary options (excluding OTC):", binary_options)
 def fetch_historical_data(asset, timeframe, num_bars):
     return mt5.copy_rates_from_pos(asset, timeframe, 0, num_bars)
 
-# Save historical data to CSV
-def save_to_csv(asset, data, timeframe, data_type='historical'):
+# Save data to CSV
+def save_to_csv(asset, data, timeframe):
     os.makedirs('historical_data', exist_ok=True)
-    filename = f'historical_data/{asset}_{data_type}_data_{timeframe}.csv'
+    filename = f'historical_data/{asset}_historical_data_{timeframe}.csv'
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(['Asset', 'Time', 'Open', 'High', 'Low', 'Close', 'Tick_volume', 'Spread', 'Real_volume'])
@@ -73,29 +72,8 @@ def update_historical_data(asset, timeframe, num_bars):
     one_month_ago = current_time - timedelta(days=30)
     updated_data = [row for row in data if datetime.fromtimestamp(row[0]) > one_month_ago]
     
-    save_to_csv(asset, updated_data, timeframe, data_type='historical')
-
-    # Delete old historical data files
-    delete_old_files('historical_data', days=30)
+    save_to_csv(asset, updated_data, timeframe)
     return True
-
-# Save live data to CSV
-def save_live_data_to_csv(asset, data, timeframe):
-    os.makedirs('live_data', exist_ok=True)
-    filename = f'live_data/{asset}_live_data_{timeframe}.csv'
-    with open(filename, mode='a', newline='') as file:  # Use append mode
-        writer = csv.writer(file)
-        writer.writerow(['Asset', 'Time', 'Open', 'High', 'Low', 'Close', 'Tick_volume', 'Spread', 'Real_volume'])
-        writer.writerow([asset] + list(data))
-
-# Delete old files based on days
-def delete_old_files(folder, days):
-    threshold_time = datetime.now() - timedelta(days=days)
-    for file in glob.glob(os.path.join(folder, '*')):
-        file_creation_time = datetime.fromtimestamp(os.path.getctime(file))
-        if file_creation_time < threshold_time:
-            os.remove(file)
-            print(f"Deleted old file: {file}")
 
 # Fetch live data
 def fetch_live_data(asset, timeframe):
@@ -104,11 +82,13 @@ def fetch_live_data(asset, timeframe):
         print(f"Failed to fetch live data for {asset}")
         return False
     print(f"Fetched live data for {asset}: {data[-1]}")
-    save_live_data_to_csv(asset, data[-1], timeframe)  # Save live data
-
-    # Delete old live data files (older than 24 hours)
-    delete_old_files('live_data', days=1)  # Keep only 1 day of live data
     return True
+
+# Save available assets to a file for the other script to read
+def save_available_assets(assets_available_to_trade):
+    with open('available_assets.txt', 'w') as file:
+        for asset in assets_available_to_trade:
+            file.write(f"{asset}\n")
 
 # Main loop
 num_bars_1m = 43200
@@ -152,6 +132,9 @@ while True:
         else:
             assets_failed_to_download.append(asset)
 
+    # Save assets that are available for trading to a file
+    save_available_assets(assets_available_to_trade)
+
     # Summary of trading availability
     print("\nSummary of asset availability:")
     if assets_available_to_trade:
@@ -165,7 +148,7 @@ while True:
 
     # Sleep to respect update intervals
     print("Sleeping for 1 minute...")
-    time.sleep(25)  # Change this to 60 for a proper wait time
+    time.sleep(25)
 
 # Shutdown MetaTrader
 mt5.shutdown()
